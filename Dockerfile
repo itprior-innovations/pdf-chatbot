@@ -2,23 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application
+COPY requirements.txt .
+# CPU-only torch first (much smaller), then the rest
+RUN pip install --no-cache-dir torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
-# Create docs directory
-RUN mkdir -p docs
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    PORT=7860 \
+    BEHIND_PROXY=1
 
-# Expose port for web interface
-EXPOSE 5000
+EXPOSE 7860
 
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-
-# Command to run the application
-CMD ["python", "src/app.py"]
-
+CMD ["python", "space_app.py"]

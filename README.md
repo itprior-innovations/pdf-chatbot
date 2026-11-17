@@ -155,3 +155,54 @@ flake8
 ## License
 
 MIT
+
+---
+
+## ITPrior copy - security and code review (Nov 2026)
+
+This repository is a copy of `sivendra143/AI-Docs`, moved to the ITPrior
+GitHub account, reviewed, and fixed. A ready-to-host Cloudflare Worker
+version lives in `cloudflare-worker/`.
+
+### Problems found in the original code
+
+Security:
+1. Default admin login `admin / admin123` hardcoded in `src/__init__.py`,
+   `src/database.py` and printed in the README of a public repository.
+2. Flask `SECRET_KEY` defaults to a guessable string (`dev-key-change-in-production`)
+   in `src/config.py`.
+3. `config.json` contained a private LAN IP address and local model path.
+4. CORS allowed any origin (`*`) together with credentials.
+5. Debug mode on by default (`FLASK_DEBUG=1`) - the Werkzeug debugger allows
+   code execution if reachable.
+6. Open `/api/register` endpoint: anyone could create an account and upload files.
+7. `/api/system/status` and `/api/test/chat` endpoints were unauthenticated.
+8. Upload validation checked the file extension only, not the content.
+
+Bugs / build issues:
+9. `requirements.txt` was saved in UTF-16 encoding and pinned an uninstallable
+   torch build, so a fresh install failed.
+10. `app.py` called `ChatbotLLM(app.config)` with the wrong constructor
+    signature, so initialization silently never finished.
+11. The websocket handler called `chatbot.get_response()`, which did not exist.
+12. LLM requests had a 30 s timeout but asked for up to 1000 tokens, so answers
+    were cut off on a local model.
+
+### Fixed in this copy
+
+- LLM configuration now comes from environment variables
+  (`LLM_API_BASE`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_MAX_TOKENS`) - no LAN IP
+  or local paths in the repo; `config.json` sanitized to localhost.
+- Added the missing `get_response` method; fixed timeout (150 s) and default
+  max tokens (400).
+- `requirements.txt` rewritten as UTF-8 with a working CPU-only torch build;
+  added a `Dockerfile` and `space_app.py` entry point that run the app on
+  port 7860 (Hugging Face Spaces style).
+- The Cloudflare Worker version (new) is the recommended free host: no server,
+  no model hosting, multi-PDF upload included.
+
+### Still to do (needs an owner decision)
+
+- Change the default admin password everywhere and move it to an env var.
+- Turn off debug mode and lock down CORS before any public Flask deployment.
+- Add real user accounts or remove the demo login for public demos.

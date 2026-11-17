@@ -22,22 +22,21 @@ class ChatbotLLM:
             return json.load(f)
 
     def _initialize_llm(self):
-        # Set the OpenAI API base URL to point to LM Studio
-        os.environ["OPENAI_API_BASE"] = self.config["llm_api_base"]
-        # Use any non-empty string as the API key (LM Studio doesn't require a real key)
-        os.environ["OPENAI_API_KEY"] = "lm-studio"
-        
-        # Create an OpenAI client
-        client = OpenAI(
-            base_url=self.config["llm_api_base"],
-            api_key="lm-studio"
-        )
-        
-        # Return a ChatOpenAI instance configured for LM Studio
+        # LLM endpoint: env vars override config.json (works with LM Studio,
+        # Ollama, or any OpenAI-compatible API such as Hugging Face router)
+        api_base = os.environ.get("LLM_API_BASE", self.config.get("llm_api_base"))
+        api_key = os.environ.get("LLM_API_KEY", "lm-studio")
+        model_name = os.environ.get("LLM_MODEL", self.config.get("llm_model_path"))
+        os.environ["OPENAI_API_BASE"] = api_base
+        os.environ["OPENAI_API_KEY"] = api_key
+
         return ChatOpenAI(
-            model=self.config["llm_model_path"],
+            model=model_name,
             temperature=0.7,
-            max_tokens=1000
+            max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "400")),
+            base_url=api_base,
+            api_key=api_key,
+            timeout=150,
         )
 
     def _initialize_qa_chain(self):
@@ -112,7 +111,7 @@ Helpful Answer:"""
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(run_qa_chain)
                     try:
-                        result = future.result(timeout=30)  # 30 second timeout
+                        result = future.result(timeout=150)
                         logger.info("[DEBUG] Successfully got response from qa_chain")
                     except FutureTimeoutError:
                         logger.error("[ERROR] qa_chain timed out after 30 seconds")
@@ -145,6 +144,11 @@ Helpful Answer:"""
         except Exception as e:
             logger.error(f"[CRITICAL] Unhandled error in ask_question: {str(e)}", exc_info=True)
             return "I encountered an unexpected error. The administrator has been notified."
+
+    def get_response(self, message: str = None, question: str = None, conversation_id=None, user_id=None, language: str = 'en', conversation_history=None) -> str:
+        """Alias used by the websocket conversation handler."""
+        q = message or question or ""
+        return self.ask_question(q, language=language, conversation_history=conversation_history)
 
     def get_smart_suggestions(self, previous_question: str, context: str, language: str = 'en') -> List[str]:
         """
